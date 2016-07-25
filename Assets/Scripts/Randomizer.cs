@@ -5,15 +5,13 @@ using System.Collections.Generic;
 public class Randomizer : MonoBehaviour {
 
     public static Randomizer instance = null;
-
-    public static int seed;
-
+    
     private static int last;
     private static int[] pieces = new int[28];
-    
+    private float[] noiseValues;
 
-	// Use this for initialization
-	void Awake () {
+    // Use this for initialization
+    void Awake () {
         if (instance == null)
             instance = this;
         else if (instance != this)
@@ -21,9 +19,12 @@ public class Randomizer : MonoBehaviour {
 
         DontDestroyOnLoad(gameObject);
 
+        Random.seed = Random.Range(0,100);
+        
+
         newRandom();
         last = 0;
-        Random.seed = seed;
+        
         
 	}
 	

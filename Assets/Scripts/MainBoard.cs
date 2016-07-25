@@ -8,6 +8,7 @@ public class MainBoard : MonoBehaviour {
     [SerializeField] private Transform _BoardTransform;
     [SerializeField] private Text _Debug;
     [SerializeField] private Transform _StartingPosition;
+    [SerializeField] private Transform _NextBrickPosition;
     [SerializeField] private Material _GhostMaterial;
 
     [Header("Brick Prefabs")]
@@ -24,7 +25,6 @@ public class MainBoard : MonoBehaviour {
     [Header("Parametres")]
 
     public Randomizer _Randomizer;
-    public int seed;
     [SerializeField] private float _DroppingSpeed;
     [SerializeField] private float _DefaultShiftingHop = 7.0f;
     [SerializeField] private float _ShiftingHopAccurancy = 0.2f;
@@ -37,6 +37,7 @@ public class MainBoard : MonoBehaviour {
     [SerializeField] private KeyCode _DownKey = KeyCode.DownArrow;
     [SerializeField] private KeyCode _RotateKey = KeyCode.LeftAlt;
     [SerializeField] private KeyCode _InfinityShiftKey = KeyCode.Space;
+    [SerializeField] private KeyCode _ResetButton = KeyCode.R;
 
     private bool _LPressed = false;
     private bool _LReleased = false;
@@ -46,19 +47,22 @@ public class MainBoard : MonoBehaviour {
     private bool _DReleased = false;
     private bool _LeftShifting = false;
     private bool _RightShifting = false;
+    private bool _ResetPressed = false;
 
     private bool _RotatePressed = false;
     private bool _InfinityPressed = false;
     
     private bool _ItsPlaced = true;
     private bool _IsEndGame = false;
-    
+
+    private short _NextBrickType = 4;
     private short _CurrentBrickType = 5;
 
 
     private GameObject[,] _BoardOfBricks = new GameObject[10,20];
     private bool[,] _BoardOfOccupancy = new bool[10, 20];
     private GameObject _CurrentBrickDropping;
+    private GameObject _NextBrickObject;
     private int _CurrentBrickSide = 0;
 
     private float _RLTimer = 0;
@@ -87,7 +91,6 @@ public class MainBoard : MonoBehaviour {
 
     void Awake()
     {
-        Randomizer.seed = seed;
     }
 
 	// Use this for initialization
@@ -95,6 +98,7 @@ public class MainBoard : MonoBehaviour {
 
         _Debug.text = "";
         _ShiftingHop = _DefaultShiftingHop;
+        _NextBrickType = (short)Randomizer.getNewRand();
 
         _LeftKey = KeyCode.LeftArrow;
         _RightKey = KeyCode.RightArrow;
@@ -105,13 +109,23 @@ public class MainBoard : MonoBehaviour {
         _DeactivateAll();
     }
     
+    void FixedUpdate()
+    {
+        if(!_IsEndGame)
+        {
+            _UpdateMove();
+        }
+    }
+
 	// Update is called once per frame
 	void Update () {
+
+        if (Input.GetKey("escape"))
+            Application.Quit();
 
         if (!_IsEndGame)
         {
             _UpdateStates();
-            _UpdateMove();
 
             _LPressed = Input.GetKeyDown(_LeftKey);
             _LReleased = Input.GetKeyUp(_LeftKey);
@@ -119,13 +133,25 @@ public class MainBoard : MonoBehaviour {
             _RReleased = Input.GetKeyUp(_RightKey);
             _DPressed = Input.GetKeyDown(_DownKey);
             _DReleased = Input.GetKeyUp(_DownKey);
-
+            
             _RotatePressed = Input.GetKeyDown(_RotateKey);
             _InfinityPressed = Input.GetKeyDown(_InfinityShiftKey);
+
+            _ResetPressed = Input.GetKeyDown(_ResetButton);
         }
 
-        _ShowDebug();
+        //_ShowDebug();
 	}
+
+    private void _ResetGame()
+    {
+        Destroy(_CurrentBrickDropping);
+        _DeactivateAll();
+        for (int y = 0; y < 20; y++)
+            for (int x = 0; x < 10; x++)
+                _BoardOfOccupancy[x, y] = false;
+        _ItsPlaced = true;
+    }
 
     private void _UpdateStates()
     {
@@ -134,29 +160,48 @@ public class MainBoard : MonoBehaviour {
             _CheckLines();
             _ResetSideState();
             GameObject obj = _TBrickPrefab;
-            _CurrentBrickType = (short)Randomizer.getNewRand();
+            _CurrentBrickType = _NextBrickType;
+            _NextBrickType = (short)Randomizer.getNewRand();
 
-            _CanPlaceAnother();
 
-            switch (_CurrentBrickType)
+            if (_CanPlaceAnother())
             {
-                case 1: obj = _TBrickPrefab; break;
-                case 2: obj = _OBrickPrefab; break;
-                case 3: obj = _IBrickPrefab; break;
-                case 4: obj = _JBrickPrefab; break;
-                case 5: obj = _LBrickPrefab; break;
-                case 6: obj = _SBrickPrefab; break;
-                case 7: obj = _ZBrickPrefab; break;
-            }
+                switch (_CurrentBrickType)
+                {
+                    case 1: obj = _TBrickPrefab; break;
+                    case 2: obj = _OBrickPrefab; break;
+                    case 3: obj = _IBrickPrefab; break;
+                    case 4: obj = _JBrickPrefab; break;
+                    case 5: obj = _LBrickPrefab; break;
+                    case 6: obj = _SBrickPrefab; break;
+                    case 7: obj = _ZBrickPrefab; break;
+                }
 
-            _CurrentBrickDropping = Instantiate(obj, _StartingPosition.transform.position, _MainBoardObject.transform.rotation) as GameObject;
-            _CurrentBrickDropping.transform.parent = _MainBoardObject.transform;
-            _ItsPlaced = false;
-            if (!_IsEndGame)
-            {
+                _CurrentBrickDropping = Instantiate(obj, _StartingPosition.transform.position, _MainBoardObject.transform.rotation) as GameObject;
+                _CurrentBrickDropping.transform.parent = _MainBoardObject.transform;
+
+                Destroy(_NextBrickObject);
+
+                switch (_NextBrickType)
+                {
+                    case 1: obj = _TBrickPrefab; break;
+                    case 2: obj = _OBrickPrefab; break;
+                    case 3: obj = _IBrickPrefab; break;
+                    case 4: obj = _JBrickPrefab; break;
+                    case 5: obj = _LBrickPrefab; break;
+                    case 6: obj = _SBrickPrefab; break;
+                    case 7: obj = _ZBrickPrefab; break;
+                }
+
+                _NextBrickObject = Instantiate(obj, _NextBrickPosition.position, _MainBoardObject.transform.rotation) as GameObject;
+
+                _ItsPlaced = false;
+                
                 _CalculateGhost();
                 _ShowGhost();
             }
+            else
+                _IsEndGame = true;
         }
 
         if(_LPressed)
@@ -244,22 +289,31 @@ public class MainBoard : MonoBehaviour {
             _CalculateGhost();
             _ShowGhost();
         }
+
+        if(_ResetPressed)
+        {
+            _ResetGame();
+        }
+
+        if (_InfinityPressed)
+            _TryShiftInfinitlyDown();
     }
 
-    private void _CanPlaceAnother()
+    private bool _CanPlaceAnother()
     {
         for (int i = 0; i < 4; i++)
         {
             short tmpX = (short)(brickCoords[_CurrentBrickType, 2 * i] + _StartingPosition.position.x);
             short tmpY = (short)(brickCoords[_CurrentBrickType, 2 * i + 1] + _StartingPosition.position.y);
-
+            
             if (_BoardOfOccupancy[tmpX, tmpY])
             {
                 _IsEndGame = true;
-                break;
+                return false;
             }
 
         }
+        return true;
     }
 
     private void _UpdateMove()
@@ -296,8 +350,7 @@ public class MainBoard : MonoBehaviour {
                 Destroy(_CurrentBrickDropping);
                 _ItsPlaced = true;
             }
-            if (_InfinityPressed)
-                _TryShiftInfinitlyDown(-_DroppingSpeed);
+
         }
     }
 
@@ -339,7 +392,7 @@ public class MainBoard : MonoBehaviour {
         return true;
     }
 
-    private void _TryShiftInfinitlyDown(float yInterval)
+    private void _TryShiftInfinitlyDown()
     {
         _CurrentBrickDropping.transform.localPosition = new Vector3(ghostCoords[3, 0], ghostCoords[3, 1]);
     }
