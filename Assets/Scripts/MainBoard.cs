@@ -9,7 +9,10 @@ public class MainBoard : MonoBehaviour {
     [SerializeField] private Text _Debug;
     [SerializeField] private Transform _StartingPosition;
     [SerializeField] private Transform _NextBrickPosition;
+    [SerializeField] private Transform _HoldBrickPosition;
     [SerializeField] private Material _GhostMaterial;
+    [SerializeField] private GameObject _PutParticle;
+    [SerializeField] private GameObject _BlinkPrefab;
 
     [Header("Brick Prefabs")]
 
@@ -38,6 +41,7 @@ public class MainBoard : MonoBehaviour {
     [SerializeField] private KeyCode _RotateKey = KeyCode.LeftAlt;
     [SerializeField] private KeyCode _InfinityShiftKey = KeyCode.Space;
     [SerializeField] private KeyCode _ResetButton = KeyCode.R;
+    [SerializeField] private KeyCode _HoldButton = KeyCode.LeftShift;
 
     private bool _LPressed = false;
     private bool _LReleased = false;
@@ -48,23 +52,31 @@ public class MainBoard : MonoBehaviour {
     private bool _LeftShifting = false;
     private bool _RightShifting = false;
     private bool _ResetPressed = false;
+    private bool _HoldPressed = false;
 
     private bool _RotatePressed = false;
     private bool _InfinityPressed = false;
     
     private bool _ItsPlaced = true;
     private bool _IsEndGame = false;
+    private bool _IsEliminatingLines = false;
+    private bool _IsHoldUsed = false;
 
     private short _NextBrickType = 4;
     private short _CurrentBrickType = 5;
+    private short _HoldBrickType = 0;
 
 
     private GameObject[,] _BoardOfBricks = new GameObject[10,20];
+    private GameObject[] _Blinks = new GameObject[20];
     private bool[,] _BoardOfOccupancy = new bool[10, 20];
     private GameObject _CurrentBrickDropping;
     private GameObject _NextBrickObject;
+    private GameObject _HoldBrickObject;
     private int _CurrentBrickSide = 0;
+    private short[] _ToEliminate = new short[4];
 
+    private float _DeathBlinkTimer = 0;
     private float _RLTimer = 0;
     private float _ShiftingHop;
     
@@ -104,9 +116,13 @@ public class MainBoard : MonoBehaviour {
         _RightKey = KeyCode.RightArrow;
         _RotateKey = KeyCode.LeftAlt;
         _DownKey = KeyCode.DownArrow;
+        _HoldButton = KeyCode.LeftShift;
         
         _BulidBoard();
         _DeactivateAll();
+
+        for (int i = 0; i < 4; i++)
+            _ToEliminate[i] = -1;
     }
     
     void FixedUpdate()
@@ -115,6 +131,7 @@ public class MainBoard : MonoBehaviour {
         {
             _UpdateMove();
         }
+        RenderSettings.skybox.SetFloat("_Rotation", Time.time * 1.0f);
     }
 
 	// Update is called once per frame
@@ -133,6 +150,7 @@ public class MainBoard : MonoBehaviour {
             _RReleased = Input.GetKeyUp(_RightKey);
             _DPressed = Input.GetKeyDown(_DownKey);
             _DReleased = Input.GetKeyUp(_DownKey);
+            _HoldPressed = Input.GetKeyDown(_HoldButton);
             
             _RotatePressed = Input.GetKeyDown(_RotateKey);
             _InfinityPressed = Input.GetKeyDown(_InfinityShiftKey);
@@ -199,9 +217,56 @@ public class MainBoard : MonoBehaviour {
                 
                 _CalculateGhost();
                 _ShowGhost();
+
+                _IsHoldUsed = false;
             }
             else
                 _IsEndGame = true;
+        }
+
+        if(_HoldPressed)
+        {
+            if(!_IsHoldUsed && _HoldBrickType == 0)
+            {
+                _HideGhost();
+                _CurrentBrickDropping.transform.rotation = Quaternion.Euler(0.0f, 0.0f, 0.0f);
+                _ResetSideState();
+
+                _HoldBrickObject = Instantiate(_CurrentBrickDropping, _HoldBrickPosition.position, Quaternion.identity) as GameObject;
+                _HoldBrickType = _CurrentBrickType;
+
+                Destroy(_CurrentBrickDropping);
+
+
+                _IsHoldUsed = true;
+
+                _HoldBrickType = _CurrentBrickType;
+
+                _ItsPlaced = true;
+            }
+            else if(!_IsHoldUsed)
+            {
+                _HideGhost();
+                GameObject go;
+               
+                _CurrentBrickDropping.transform.rotation = Quaternion.Euler(0.0f, 0.0f, 0.0f);
+                _ResetSideState();
+               
+
+                short tmp = _CurrentBrickType;
+                _CurrentBrickType = _HoldBrickType;
+                _HoldBrickType = tmp;
+
+                go = _HoldBrickObject;
+                _HoldBrickObject = _CurrentBrickDropping;
+                _CurrentBrickDropping = go;
+
+                _CurrentBrickDropping.transform.position = _StartingPosition.position;
+                _HoldBrickObject.transform.position = _HoldBrickPosition.transform.position;
+                _IsHoldUsed = true;
+                _CalculateGhost();
+                _ShowGhost();
+            }
         }
 
         if(_LPressed)
@@ -297,6 +362,31 @@ public class MainBoard : MonoBehaviour {
 
         if (_InfinityPressed)
             _TryShiftInfinitlyDown();
+
+        if (_IsEliminatingLines)
+        {
+            _DeathBlinkTimer -= Time.deltaTime;
+            
+            if (_DeathBlinkTimer < 0.0f)
+            {
+                _HideGhost();
+                short diff = 0;
+                for(int i = 0; i <4; i++)
+                {
+                    if (_ToEliminate[i] != -1)
+                    {
+                        _ShiftBoardDown(_ToEliminate[i] - diff);
+                        diff++;
+                    }
+
+                    _ToEliminate[i] = -1;
+                }
+
+                _IsEliminatingLines = false;
+                _CalculateGhost();
+                _ShowGhost();
+            }
+        }
     }
 
     private bool _CanPlaceAnother()
@@ -344,6 +434,11 @@ public class MainBoard : MonoBehaviour {
                     _BoardOfBricks[tmpX, tmpY].gameObject.GetComponent<Renderer>().material = _CurrentBrickDropping.GetComponentInChildren<Renderer>().material;
                     _BoardOfBricks[tmpX, tmpY].gameObject.SetActive(true);
 
+                    Instantiate(_PutParticle, _BoardTransform.position + new Vector3((float)tmpX, (float)tmpY, 0.0f), Quaternion.identity);
+
+                    FlashBehavior flash = _BoardOfBricks[tmpX, tmpY].GetComponent<FlashBehavior>();
+                    flash._Flash();
+
                 }
                 
 
@@ -363,6 +458,11 @@ public class MainBoard : MonoBehaviour {
                 _BoardOfBricks[x, y] = Instantiate(_BrickPrefab, _MainBoardObject.transform.position + new Vector3(x, y, 0.0f), Quaternion.identity) as GameObject;
                 _BoardOfBricks[x, y].transform.parent = _MainBoardObject.transform;
             }
+        }
+   
+        for (int y = 0; y < 20; y++)
+        {
+            _Blinks[y] = Instantiate(_BlinkPrefab, _MainBoardObject.transform.position + new Vector3(4.5f, y, 0.0f), Quaternion.identity) as GameObject;
         }
     }
 
@@ -471,6 +571,7 @@ public class MainBoard : MonoBehaviour {
 
     private void _CheckLines()
     {
+        int i = 0;
         int y = 0;
         while (y < 19)
         {
@@ -481,13 +582,28 @@ public class MainBoard : MonoBehaviour {
             }
             if (x > 9)
             {
-                _ShiftBoardDown(y);
+                _ToEliminate[i] = (short)y;
+                i++;
+                y++;
             }
             else
             {
                 y++;
             }
         }
+
+        if (i > 0)
+        {
+            _IsEliminatingLines = true;
+            _DeathBlinkTimer = 0.4f;
+        }
+
+        for (int j = 0; j < 4; j++)
+        {
+            if (_ToEliminate[j] != -1)
+                _Blinks[_ToEliminate[j]].GetComponent<BlinkBehavior>()._Flash();
+        }
+
     }
 
     private void _ShiftBoardDown(int indexY)
