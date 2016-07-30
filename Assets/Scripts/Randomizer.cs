@@ -51,7 +51,7 @@ public class Randomizer : MonoBehaviour {
         {
             pieces[i] = pieces[i + 7] = pieces[i + 14] = pieces[i + 21] = i + 1;
         }
-        for (int i = 0; i < 50; i++)
+        for (int i = 0; i < 150; i++)
         {
             swap(Random.Range(0, 28), Random.Range(0, 28));
         }
